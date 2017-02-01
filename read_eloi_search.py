@@ -16,13 +16,16 @@ import twit_base_funct as tbf
 import twitter as tw
 import json
 
-cart = '/home/fede/Scrivania/Coc/eloi_twit/'
+cart = '/home/fede/Scrivania/Idee/eloi_twit/'
 
-filename = cart + 'output_#WomensMarch_2.dat'
-lista = tbf.read_json(filename, tweet_format = 'my_tweet')
-
+filename = '/media/fede/fedata/eloi_twit/dandesearch_#WomensMarch000.dat'
+#filename = cart + 'dandesearch_#WomensMarch_000.dat'
+lista = tbf.read_json(filename, tweet_format = 'eloi')
+#print(lista[0].favorite_count, lista[0].link_to[0].start, lista[0].link_to[0].end, lista[0].link_to[0].type)
+print(type(lista))
+sys.exit()
 print(type(lista),len(lista))
 
 for tw in lista:
-    print(type(tw),tw['user']['screen_name'])
+    print(type(tw),tw.user)#['user']['screen_name'])
     #tw.print_tw()
