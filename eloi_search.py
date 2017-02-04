@@ -4,126 +4,168 @@
 import numpy as np
 import sys
 import os.path
-#import matplotlib.pyplot as pl
-#import math as mt
-#import spect_base_module as sbm
-#import pickle
-#import scipy.io as io
-#import matplotlib.colors as colors
-#import scipy.stats as stats
+import matplotlib.pyplot as pl
+import math as mt
+import matplotlib.colors as colors
+import scipy.stats as stats
 import time
+from subprocess import call
 
 import twit_base_funct as tbf
 import twitter as tw
 import json
+import urllib
 
-# Uses the SEARCH api
+# Redirects standard output
+sys.stdout = open('log_eloi_search.log', 'w')
 
-quartodora = 15*60
+time_init = time.time()
 
-i_0 = 400
-user = 1
+# Reads input file
+try:
+    input_file = sys.argv[1]
+    if not os.path.isfile(input_file):
+        raise ValueError('No input_file given, setting the default ./eloi_input.in\n')
+    #os.path.exists(folder)
+except:
+    print('No input_file specified, setting the default ./eloi_input.in\n')
+    input_file = './eloi_input.in'
+    if not os.path.isfile(input_file):
+        raise ValueError('No input_file found, give the file path as argument to the code (python eloi_search.py /path/to/eloi_input.in) or place it in this folder\n')
 
-cart = '/home/fedefab/Scrivania/Idee/eloi_twit/'
-search_string = '#WomensMarch'
-lab = '{:03d}'
-file_out = open(cart + 'eloisearch_'+search_string+lab.format(i_0)+'.dat','w')
+#### READS INPUTS from input_file ################
 
-#id0 = 823173151328796671
-id0 = 822753173151328796
+keys = 'access_file folder_path search_string search_label max_files first_file max_id'
+keys = keys.split()
+itype = [str, str, str, str, int, int, long]
+defaults = [None, '.', None, None, 1000, 0, None]
+inputs = tbf.read_inputs(input_file, keys, itype = itype, defaults = defaults)
 
-oauth = tbf.access(user=user)
-if user == 1:
-    print('USER is {}\n'.format('titicacaf'))
-elif user == 2:
-    print('USER is {}\n'.format('d4ndel1on'))
+if inputs['folder_path'] == '.':
+    print('Setting the current folder as output folder\n')
+cart = inputs['folder_path']
+
+if inputs['access_file'] is None:
+    access_file = cart+'access_file.acc'
 else:
-    raise NameError('No user defined!')
+    access_file = inputs['access_file']
+if not os.path.isfile(access_file):
+    raise ValueError('access_file not found at {}!'.format(access_file))
 
-# Initiate the connection to Twitter REST API
-twitter = tw.Twitter(auth=oauth)
+if inputs['search_string'] is None:
+    raise ValueError('What should I search for? Set [search_string].\n')
 
-# Search for latest tweets about search_string
-# ricerca = twitter.search.tweets(q=search_string, count = 100)
+oauth = tbf.access_from_file(inputs['access_file'])
+search_string = urllib.quote(inputs['search_string'])
+print('SEARCHING FOR: {}\n'.format(inputs['search_string']))
 
-if id0 is not None:
-    print(id0,id0-1)
-    ricerca = twitter.search.tweets(q=search_string, count = 100, max_id = id0-1, result_type = 'recent')
+if inputs['search_label'] is None:
+    search_label = inputs['search_string'][0:25]
+    print('Setting auto search_label: {}\n'.format(search_label))
+
+max_id = inputs['max_id']
+i_0 = inputs['first_file']
+
+if max_id is None:
+    print('Research starts from most recent tweet\n')
+
+if inputs['max_files'] < 1000:
+    lab = '{:03d}'
+elif inputs['max_files'] < 100000:
+    lab = '{:05d}'
 else:
-    ricerca = twitter.search.tweets(q=search_string, count = 100, result_type = 'recent')
+    lab = '{:06d}'
 
-t1 = time.time()
-print(time.ctime())
-
-search_stat = ricerca['search_metadata']
-tweets = ricerca['statuses']
-
+time_sleep = 4
+quartodora = 15*60.
 tweet_count = 0
-for tweet in tweets:
-    if 'text' in tweet:
-        json.dump(tweet, file_out)#, indent=4)
-        file_out.write('\n')
 
-        tweet_id = tweet['id_str']
-        tw_username = tweet['user']['screen_name']
-        tw_user_id = tweet['user']['id_str']
-        tw_time = tweet['created_at']
-        tw_text = tweet['text']
+###### Beginning the cycle on 15 min sessions ##############
 
-        print('{}: {} at {} --> {}\n'.format(tweet_count, r'@'+tw_username, tw_time, tw_text.encode('utf-8')))
-        tweet_count += 1
+for times in range(i_0,i_0+inputs['max_files']):
+    # Checks internet connection
+    if not tbf.internet_on():
+        time0 = time.ctime()
+        while NoConnection:
+            print('Cycle {}, NO INTERNET CONNECTION since {}'.format(times, time0))
+            NoConnection = not tbf.internet_on()
+            time.sleep(30)
 
-#max_id = search_stat['max_id'] # A me in realtà servirebbe il min id
+    # Initiate the connection to Twitter REST API
+    oauth = tbf.access_from_file(inputs['access_file'])
+    twitter = tw.Twitter(auth=oauth)
 
-for times in range(i_0,i_0+200):
-    print('times',times)
-    if times > i_0:
-        file_out = open(cart + 'eloisearch_'+search_string+lab.format(times)+'.dat','w')
-        t1 = time.time()
-        print(time.ctime())
+    outfile = cart+search_label+'_'+lab.format(times)+'.dat'
+    file_out = open(outfile, 'w')
+    print('File: {}\n'.format(outfile))
+
+    # Waits for the 180 requests to be available
+    ok_180, restano, NoConnection = tbf.wait_requests(twitter, sleep_time = time_sleep, wait = True, interval = 60, n_trials = 15, num_min = 100)
+
+    if not ok_180:
+        if restano is not None:
+            print('PROBLEM! Only {} requests left for cycle {}. Closing cycle and waiting..\n'.format(restano,times))
+        if NoConnection:
+            print('PROBLEM! No Internet connection, closing cycle {} and waiting...\n'.format(times))
+        file_out.close()
+        continue
+
+    # comincio a contare il tempo
+    t1 = time.time()
+    print(time.ctime())
+
+    #### Beginning cycle over the 180 requests (170 here, just to be sure) #####
     for tri in range(170):
         if tri%10 == 0:
-            print(tri)
-            done = False
-            trials = 0
-            while not done:
-                trials+=1
-                try:
-                    quantoresta = twitter.application.rate_limit_status(resources='search')
-                    restano = quantoresta['resources']['search']['/search/tweets']['remaining']
-                    print('Restano {} richieste\n'.format(restano))
-                    done = True
-                except:
-                    time.sleep(30)
-                if trials > 10:
-                    restano = 0
-                    break
-            if restano < 10:
-                print('PROBLEMA! esco\n')
-                break
-        max_id = np.max(np.array([t['id'] for t in tweets]))
-        time_max_id = np.argmax(np.array([t['id'] for t in tweets]))
-        max_time = tweets[time_max_id]['created_at']
-        print('max_id: {}; time: {}'.format(max_id,max_time))
-        min_id = np.min(np.array([t['id'] for t in tweets]))
-        time_min_id = np.argmin(np.array([t['id'] for t in tweets]))
-        min_time = tweets[time_min_id]['created_at']
-        print('min_id: {}; time: {}'.format(min_id,min_time))
-        print('\n')
+            print('Made {} out of {} requests for cycle {}\n'.format(tri, 170, times))
 
+            # Checking remaining requests
+            ok_bool, restano, NoConnection = tbf.wait_requests(twitter, num_min = 11)
+
+            if NoConnection:
+                print('PROBLEM! No Internet connection, closing cycle {} and waiting...\n'.format(times))
+                file_out.close()
+                break
+            elif restano is not None and restano < 11:
+                print('PROBLEM! Only {} requests missing, closing cycle {}\n'.format(restano, times))
+                file_out.close()
+                break
+            elif not ok_bool:
+                print('PROBLEM! Closing cycle {} and waiting...\n'.format(times))
+                file_out.close()
+                break
+
+        # Making the request:
         try:
-	    ricerca = twitter.search.tweets(q=search_string, count = 100, max_id = min_id-1, result_type = 'recent')
+            ricerca = twitter.search.tweets(q=search_string, count = 100, max_id = max_id, result_type = 'recent')
 
             search_stat = ricerca['search_metadata']
             tweets = ricerca['statuses']
 
+            ### Write tweets to file_out
             for tweet in tweets:
                 if 'text' in tweet:
-                    json.dump(tweet, file_out)#, indent=4)
+                    json.dump(tweet, file_out)
                     file_out.write('\n')
                     tweet_count += 1
-        except:
-	    continue
+
+            # Max and Min ids of this search
+            max_id = np.max(np.array([t['id'] for t in tweets]))
+            time_max_id = np.argmax(np.array([t['id'] for t in tweets]))
+            max_time = tweets[time_max_id]['created_at']
+            print('max_id: {}; time: {}'.format(max_id,max_time))
+
+            min_id = np.min(np.array([t['id'] for t in tweets]))
+            time_min_id = np.argmin(np.array([t['id'] for t in tweets]))
+            min_time = tweets[time_min_id]['created_at']
+            print('min_id: {}; time: {}'.format(min_id,min_time))
+            print('\n')
+
+            # Finding the max id for the next iteration
+            max_id = min_id - 1
+        except Exception as cazzillo:
+            print('------>> Found exception {} <<-------'.format(type(cazzillo)))
+            continue
 
     print('Siamo a {} tweets\n'.format(tweet_count))
 
@@ -137,34 +179,32 @@ for times in range(i_0,i_0+200):
         restano = -1
     print('--------------------------------------------------\n')
 
+    # Estimate how much time we should wait
     t2 = time.time()
     tdiff = t2-t1
     if tdiff < quartodora:
-        manca = quartodora - tdiff
+        time_sleep = quartodora - tdiff
     else:
- 	manca = 4
-    print(time.ctime())
-    print('Ora aspetto {} secondi.\n'.format(manca+20))
-    time.sleep(manca+20)
+        time_sleep = 4
     print(time.ctime())
 
-    print('--------------------------------------------------\n')
-    try:
-        quantoresta = twitter.application.rate_limit_status(resources='search')
-        restano = quantoresta['resources']['search']['/search/tweets']['remaining']
-        print('Restano {} richieste\n'.format(restano))
-    except:
-        print('Error in retrieving remaining requests')
-        restano = -1
-    while restano != 180:
-        print('PROBLEMA!\n')
-        time.sleep(60)
-        try:
-            quantoresta = twitter.application.rate_limit_status(resources='search')
-            restano = quantoresta['resources']['search']['/search/tweets']['remaining']
-            print('Restano {} richieste\n'.format(restano))
-        except:
-            print('Error in retrieving remaining requests')
-            restano = -1
-    print('--------------------------------------------------\n')
+    # Closing file and starting new cycle
     file_out.close()
+
+time_tot = time.time() - time_init
+print('\n')
+print('--------------------------------------------------\n')
+print('SEARCH endend with {} tweets, downloaded in {:4.1f} hours'.format(tweet_count, time_tot/3600.))
+print('--------------------------------------------------\n')
+
+#time_str = time.ctime().split()
+#time_stamp = '_'+time_str[2]+'-'+time_str[1]+'-'+time_str[4]
+#nome_log_0 = cart+'log_'+search_label+time_stamp
+#nome_log = nome_log_0 + '.log'
+#iui = 1
+#while os.path.isfile(nome_log):
+#    nome_log = nome_log_0 + '{:02d}'.format(iui) + '.log'
+#    iui += 1
+#
+#call(["echo pippo"])
+#call(["cp log_eloi_search.log "+nome_log])

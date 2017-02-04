@@ -4,18 +4,33 @@
 import numpy as np
 import sys
 import os.path
-#import matplotlib.pyplot as pl
-#import math as mt
-#import spect_base_module as sbm
-#import pickle
-#import scipy.io as io
-#import matplotlib.colors as colors
-#import scipy.stats as stats
-import spect_base_module as sbm
+import matplotlib.pyplot as pl
+import math as mt
+import matplotlib.colors as colors
+import scipy.stats as stats
+import warnings
+
 import twitter as tw
 import json
+import socket
+import time
+import urllib
 
 # Functions to use in eloi_twit
+
+
+def prova_ciclo():
+    for i in range(10):
+        if i > 3:
+            print(i)
+            if i > 7:
+                break
+            if i > 5:
+                continue
+            if i > 7:
+                break
+            print('ciao')
+    return
 
 
 def access(user=1):
@@ -23,10 +38,10 @@ def access(user=1):
     keys = ['ACCESS_TOKEN', 'ACCESS_SECRET', 'CONSUMER_KEY', 'CONSUMER_SECRET']
     if user == 1:
         filename = '/home/fedefab/Scrivania/Idee/eloi_twit/access_tokens/user_1.acc'
-        inputs = sbm.read_inputs(filename, keys, itype = 4*[str])
+        inputs = read_inputs(filename, keys, itype = 4*[str])
     elif user == 2:
         filename = '/home/fedefab/Scrivania/Idee/eloi_twit/access_tokens/user_2.acc'
-        inputs = sbm.read_inputs(filename, keys, itype = 4*[str])
+        inputs = read_inputs(filename, keys, itype = 4*[str])
     else:
         print('User not valid')
 
@@ -35,7 +50,56 @@ def access(user=1):
     return oauth
 
 
-def access_from_file(nomefile):
+def wait_requests(twitter, num_min = 180, n_trials = 10, sleep_time = 0, wait = False, interval = 30):
+    """
+    twitter is a twitter API.
+    Waits until at least 'num' requests are available or there is connection. Makes 'n_trials' requests waiting 30s in between. If sleep_time is set, waits the sleep_time before.
+    If wait is True, waits until the num_min is reached, if trials < n_trials.
+    Returns: ok_bool, restano, NoConnection
+    """
+    if sleep_time > 0:
+        print('Waiting {} seconds.\n'.format(sleep_time))
+        time.sleep(sleep_time)
+
+    restano = None
+    ok_bool = False
+    NoConnection = False
+
+    quantoresta_rate_limit = twitter.application.rate_limit_status(resources='application')
+    resta = quantoresta_rate_limit['resources']['application']['/application/rate_limit_status']['remaining']
+    if resta < n_trials + 1:
+        print('Not enough requests to see if there are enough requests!!\n')
+        return ok_bool, restano, NoConnection
+
+    done = False
+    trials = 0
+    while not done and trials <= n_trials:
+        trials+=1
+        try:
+            quantoresta = twitter.application.rate_limit_status(resources='search')
+            restano = quantoresta['resources']['search']['/search/tweets']['remaining']
+            print('Restano {} richieste\n'.format(restano))
+            if not wait:
+                done = True
+            else:
+                if restano >= num_min:
+                    done = True
+                else:
+                    time.sleep(interval)
+        except:
+            NoConnection = not internet_on()
+            if NoConnection: print('No Internet connection, trial {}\n'.format(trials))
+            time.sleep(30)
+
+    NoConnection = not internet_on()
+
+    if done:
+        ok_bool = True
+
+    return ok_bool, restano, NoConnection
+
+
+def access_from_file(filename):
     """
     Returns oauth.
     File has to be in access_input.dat format and contain valid access tokens.
@@ -43,7 +107,7 @@ def access_from_file(nomefile):
     # Variables that contains the user credentials to access Twitter API
     keys = ['ACCESS_TOKEN', 'ACCESS_SECRET', 'CONSUMER_KEY', 'CONSUMER_SECRET']
     try:
-        inputs = sbm.read_inputs(filename, keys, itype = 4*[str])
+        inputs = read_inputs(filename, keys, itype = 4*[str])
     except:
         raise ValueError('file not found!')
 
@@ -52,10 +116,102 @@ def access_from_file(nomefile):
     return oauth
 
 
-def check_remaining_search(user = 1):
-    # Checks how many requests are left for the Search API.
+def internet_on(host="8.8.8.8", port=53, timeout=3):
+    """
+    Thanks to 7h3rAm on stackoverflow.
+    Host: 8.8.8.8 (google-public-dns-a.google.com)
+    OpenPort: 53/tcp
+    Service: domain (DNS/TCP)
+    """
+    try:
+        socket.setdefaulttimeout(timeout)
+        socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
+        return True
+    except Exception as ex:
+        print ex.message
+        return False
 
-    oauth = access(user=user)
+
+def read_inputs(nomefile, key_strings, n_lines = None, itype = None, defaults = None, verbose=False):
+    """
+    Standard reading for input files. Searches for the keys in the input file and assigns the value to variable.
+    :param keys: List of strings to be searched in the input file.
+    :param defaults: List of default values for the variables.
+    :param n_lines: List. Number of lines to be read after key.
+    """
+
+    keys = ['['+key+']' for key in key_strings]
+
+    if n_lines is None:
+        n_lines = np.ones(len(keys))
+
+    if itype is None:
+        itype = len(keys)*[None]
+
+    if defaults is None:
+        #warnings.warn('No defaults are set. Setting None as default value.')
+        defaults = len(keys)*[None]
+
+    variables = []
+    is_defaults = []
+    with open(nomefile, 'r') as infile:
+        lines = infile.readlines()
+        # Skips commented lines:
+        lines = [line for line in lines if not (line.lstrip()[0:2] == '#[' or line.lstrip()[0:2] == '# ')]
+
+        for key, deflt, nli, typ in zip(keys,defaults,n_lines,itype):
+
+            is_key = np.array([key in line for line in lines])
+            if np.sum(is_key) == 0:
+                print('Key {} not found, setting default value {}\n'.format(key,deflt))
+                variables.append(deflt)
+                is_defaults.append(True)
+            elif np.sum(is_key) > 1:
+                raise KeyError('Key {} appears {} times, should appear only once.'.format(key,np.sum(is_key)))
+            else:
+                num_0 = np.argwhere(is_key)[0][0]
+                if nli == 1:
+                    cose = lines[num_0+1].split()
+                    if typ == bool: cose = [str_to_bool(lines[num_0+1].split()[0])]
+                    if typ == str: cose = [lines[num_0+1].rstrip()]
+                    if len(cose) == 1:
+                        variables.append(map(typ,cose)[0])
+                    else:
+                        variables.append(map(typ,cose))
+                else:
+                    cose = []
+                    for li in range(nli):
+                        cos = lines[num_0+1+li].split()
+                        if typ == str: cos = [lines[num_0+1+li].rstrip()]
+                        if len(cos) == 1:
+                            cose.append(map(typ,cos)[0])
+                        else:
+                            cose.append(map(typ,cos))
+                    variables.append(cose)
+                is_defaults.append(False)
+
+    if verbose:
+        for key, var, deflt in zip(keys,variables,is_defaults):
+            print('----------------------------------------------\n')
+            if deflt:
+                print('Key: {} ---> Default Value: {}\n'.format(key,var))
+            else:
+                print('Key: {} ---> Value Read: {}\n'.format(key,var))
+
+    return dict(zip(key_strings,variables))
+
+
+def check_remaining_search(user = None, access_file = None):
+    """
+    Checks how many requests are left for the Search API.
+    """
+    if user is None and access_file is None:
+        raise ValueError('No access_tokens given\n')
+    elif user is not None:
+        oauth = access(user=user)
+    elif access_file is not None:
+        oauth = access_from_file(access_file)
+
     twitter = tw.Twitter(auth=oauth)
 
     quantoresta = twitter.application.rate_limit_status(resources='search')
@@ -88,17 +244,17 @@ class EloiTweet(object):
 
 
 
-        if coordinates in tweet:
+        if tweet['coordinates'] is not None:
             self.loc_name = ''
             lat, lon = extract_json_coords(tweet['coordinates'])
             self.loc_coordinates = [lat,lon]
             self.loc_type = 'Tweet_GEO_ref'
-        elif places in tweet:
-            self.loc_name = tweet['places']['full_name']
-            lat, lon = extract_json_coords(tweet['places']['bounding_box']['coordinates'])
+        elif tweet['place'] is not None:
+            self.loc_name = tweet['place']['full_name']
+            lat, lon = extract_json_coords(tweet['place']['bounding_box']['coordinates'])
             self.loc_coordinates = [lat,lon]
             self.loc_type = 'Tweet_GEO_tag'
-        elif location in tweet['user']:
+        elif tweet['user']['location'] is not None:
             self.loc_name = tweet['user']['location']
             lat, lon = find_coords_of_place(tweet['user']['location'])
             self.loc_coordinates = [lat, lon]
@@ -255,10 +411,7 @@ def read_json(filename, tweet_format = 'twitter'):
     Tweets = []
     print('ciao!!')
 
-    #for line in tweets_file:
-    for i in range(1):
-        line = tweets_file.readline()
-        #print(line)
+    for line in tweets_file:
         try:
             # Read in one line of the file, convert it into a json object
             tweet = json.loads(line.strip())
@@ -277,7 +430,9 @@ def read_json(filename, tweet_format = 'twitter'):
                     Tweets.append(zio)
                 else:
                     raise ValueError('tweet_formats available: {}, {}'.format('twitter','eloi'))
-        except:
+        except Exception as ciccio:
+            print('An error occurred: {}. Just skipping..'.format(type(ciccio)))
+            raise
             # read in a line is not in JSON format (sometimes errors occur)
             continue
 

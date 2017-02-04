@@ -1,0 +1,80 @@
+#### SAMPLE FILE eloi_input.in FOR eloi_search.py ####
+#### For simple usage: modify the folder_path and the search_string, then copy this file to the folder_path, naming it 'eloi_input.in'
+
+##### Available keys: access_file, folder_path, search_string, search_label, max_files, first_file, max_id. Planned keys, still not available: start and stop time.
+
+
+################### IMPORTANT ###########################
+
+KEYS need to appear inside SQUARED BRACKETS and the given value needs to be written in the line IMMEDIATELY FOLLOWING the key, like this:
+
+[key]
+key_input
+
+If you want to use the Default value for one key, where possible, just COMMENT the key line in this way:
+
+#[key]
+
+You can write random stuff in the key line, but if commented with '#' the code will skip it. If the key is not found or commented the code will assume the default value, if possible.
+
+################### IMPORTANT ###########################
+
+
+### In the next you have to place your values for the keys.
+
+## Key: folder_path
+## Description: This is the working directory, in which the tweets and other stuff will be stored.
+## Default: ./
+
+[folder_path]
+/home/fede/Scrivania/Idee/eloi_twit/
+
+
+## Key: access_file
+## Description: This is the absolute path of the access_file, the file containing the access_tokens for the API connection. The format of this file has to be as the SAMPLE access_file.acc.
+## Default: folder_path/access_file.acc
+
+[access_file]
+/home/fede/Scrivania/Idee/eloi_twit/access_tokens/access_file.acc
+
+
+## Key: search_string
+## Description: What would you like to search for? This is the string that you would place in Twitter search bar.
+## Default: None (don't skip this!)
+
+[search_string]
+#NoBanNoWall
+
+
+#### UNCOMMENT the following keys if you want to use them.
+
+## Key: search_label
+## Description: A string prefix for the names of your saved files, in this way: folder_path/search_label_077.dat
+## Default: the search_string (first 25 letters)
+
+#[search_label]
+#NoBanNoWall_search_2
+
+
+## Key: max_files
+## Description: The max number of files that you want to save. Consider that each file may contain about 17000 tweets, for some 100 Mb of disk space. If your analyzing something big and have no problems with storage place some big number here (1000 is quite a big number.. 10000 is bigger but would take about 1Tb). Of course, the process could also stop before if no more tweets are found in the search API.
+## Default: 1000
+
+#[max_files]
+10
+
+
+## Key: first_file
+## Description: If, for some reason, the process has stopped at file_006 and you want to continue from where it got, place here the first 'free' file number, in this case 7.
+## Default: 0
+
+#[first_file]
+7
+
+
+## Key: max_id
+## Description: If set, the code will search for Tweets OLDER THAN the one corresponding to the given ID. You can read the ID of some tweet directly from Twitter or, if your last run crashed, place here the last ID that the code downloaded (it is printed in the log file), so that it can continue from there.
+## Default: most recent tweet found
+
+#[max_id]
+827371593433247747
