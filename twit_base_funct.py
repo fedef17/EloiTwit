@@ -15,6 +15,8 @@ import json
 import socket
 import time
 import urllib
+import urllib2
+import argparse
 
 # Functions to use in eloi_twit
 
@@ -50,12 +52,31 @@ def access(user=1):
     return oauth
 
 
+def parseArguments():
+    """
+    Creates argument parser for code inputs.
+    """
+    parser = argparse.ArgumentParser()
+
+    # Positional mandatory arguments
+    parser.add_argument("input_file", help="input_file", type=str)
+
+    # Optional arguments
+    parser.add_argument("-ll", "--live", help="Std Output", type=bool, default=False)
+    parser.add_argument("--log", help="log file", type=str, default='log_eloi_search.log')
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    return args
+
+
 def wait_requests(twitter, num_min = 180, n_trials = 10, sleep_time = 0, wait = False, interval = 30):
     """
     twitter is a twitter API.
     Waits until at least 'num' requests are available or there is connection. Makes 'n_trials' requests waiting 30s in between. If sleep_time is set, waits the sleep_time before.
     If wait is True, waits until the num_min is reached, if trials < n_trials.
-    Returns: ok_bool, restano, NoConnection
+    Returns: ok_bool, restano
     """
     if sleep_time > 0:
         print('Waiting {} seconds.\n'.format(sleep_time))
@@ -63,7 +84,9 @@ def wait_requests(twitter, num_min = 180, n_trials = 10, sleep_time = 0, wait = 
 
     restano = None
     ok_bool = False
-    NoConnection = False
+    Connected = internet_on()
+    if not Connected:
+        wait_connection()
 
     quantoresta_rate_limit = twitter.application.rate_limit_status(resources='application')
     resta = quantoresta_rate_limit['resources']['application']['/application/rate_limit_status']['remaining']
@@ -87,17 +110,75 @@ def wait_requests(twitter, num_min = 180, n_trials = 10, sleep_time = 0, wait = 
                 else:
                     time.sleep(interval)
         except:
-            NoConnection = not internet_on()
-            if NoConnection: print('No Internet connection, trial {}\n'.format(trials))
+            Connected = internet_on()
+            if not Connected: print('No Internet connection, trial {}\n'.format(trials))
             time.sleep(30)
-
-    NoConnection = not internet_on()
 
     if done:
         ok_bool = True
 
-    return ok_bool, restano, NoConnection
+    return ok_bool, restano
 
+
+def wait_connection(sleep_time = 30):
+    """
+    Waits till internet connection is ON.
+    Returns True when finished.
+    Improve: Send a Notification when no connection is found for more than a chosen interval.
+    """
+    time0 = time.ctime()
+    Connected = internet_on()
+    while not Connected:
+        print('NO INTERNET CONNECTION since {}\n'.format(time0))
+        Connected = internet_on()
+        time.sleep(sleep_time)
+
+    return Connected
+
+
+def PrintEmptyLine(ofile = None, num = 1):
+    if ofile is None:
+        for i in range(num):
+            print('\n')
+    else:
+        for i in range(num):
+            ofile.write('\n')
+    return
+
+
+def PrintBreakLine(ofile = None, num = 1, length = 100, plus_empty = False, strong = False):
+    string = length*'-'
+    string2 = length*'/'
+    if plus_empty: string+='\n'
+
+    if ofile is None:
+        for i in range(num):
+            print(string)
+            if strong: print(string2)
+    else:
+        for i in range(num):
+            ofile.write(string)
+            if strong: ofile.write(string2)
+    return
+
+
+def PrintEmph(string, ofile = None, level = 1):
+    strong = False
+    if level > 1: strong = True
+    PrintEmptyLine(ofile = ofile)
+    PrintBreakLine(num = level, ofile = ofile, strong = strong)
+    if level == 2: PrintEmptyLine(ofile = ofile)
+
+    if ofile is None:
+        print(string)
+    else:
+        ofile.write(string)
+
+    if level == 2: PrintEmptyLine(ofile = ofile)
+    PrintBreakLine(num = level, ofile = ofile, strong = strong)
+    PrintEmptyLine(ofile = ofile)
+
+    return
 
 def access_from_file(filename):
     """
@@ -163,7 +244,7 @@ def read_inputs(nomefile, key_strings, n_lines = None, itype = None, defaults = 
 
             is_key = np.array([key in line for line in lines])
             if np.sum(is_key) == 0:
-                print('Key {} not found, setting default value {}\n'.format(key,deflt))
+                print('Key {} not found, setting default value {}'.format(key,deflt))
                 variables.append(deflt)
                 is_defaults.append(True)
             elif np.sum(is_key) > 1:
@@ -194,9 +275,9 @@ def read_inputs(nomefile, key_strings, n_lines = None, itype = None, defaults = 
         for key, var, deflt in zip(keys,variables,is_defaults):
             print('----------------------------------------------\n')
             if deflt:
-                print('Key: {} ---> Default Value: {}\n'.format(key,var))
+                print('Key: {} ---> Default Value: {}'.format(key,var))
             else:
-                print('Key: {} ---> Value Read: {}\n'.format(key,var))
+                print('Key: {} ---> Value Read: {}'.format(key,var))
 
     return dict(zip(key_strings,variables))
 
