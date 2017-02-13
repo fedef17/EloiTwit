@@ -20,7 +20,7 @@ import argparse
 
 
 # Read options/arguments given to the code
-args = tbf.parseArguments()
+args = tbf.parseArguments('search')
 
 # Redirects standard output
 if not args.live:

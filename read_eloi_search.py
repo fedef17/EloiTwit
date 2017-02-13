@@ -26,6 +26,6 @@ lista = tbf.read_json(filename, tweet_format = 'eloi')
 # sys.exit()
 print(type(lista),len(lista))
 
-for tw in lista:
-    print(type(tw),tw.user)#['user']['screen_name'])
+for tw in lista[0:2]:
+    print(type(tw),tw.user_name, tw.text)#['user']['screen_name'])
     #tw.print_tw()

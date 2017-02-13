@@ -52,7 +52,7 @@ def access(user=1):
     return oauth
 
 
-def parseArguments():
+def parseArguments(program):
     """
     Creates argument parser for code inputs.
     """
@@ -63,7 +63,8 @@ def parseArguments():
 
     # Optional arguments
     parser.add_argument("-ll", "--live", help="Std Output", type=bool, default=False)
-    parser.add_argument("--log", help="log file", type=str, default='log_eloi_search.log')
+    parser.add_argument("--log", help="log file", type=str, default='log_eloi_'+program+'.log')
+    parser.add_argument("-v", "--verbose", help="Verbose", type=bool, default=False)
 
     # Parse arguments
     args = parser.parse_args()
@@ -310,20 +311,31 @@ class EloiTweet(object):
     def __init__(self, tweet, internal_id = 0):
         self.int_id = internal_id
         self.tweet_id = tweet['id']
-        self.user = tweet['user']['screen_name']
+        self.user_name = tweet['user']['screen_name']
         self.user_id = tweet['user']['id']
         self.time = tweet['created_at']
         self.text = tweet['text']
         self.retweet_count = tweet['retweet_count']
         self.favorite_count = tweet['favorite_count']
 
+        self.user = tweet['user']['screen_name']
+        self.user_descr = tweet['user']['description']
+        self.user_followers = tweet['user']['followers_count']
+        self.user_following = tweet['user']['friends_count']
+        self.user_geo_enabled = tweet['user']['geo_enabled']
+        self.user_location = tweet['user']['location']
+        self.user_tw_count = tweet['user']['statuses_count']
+        self.user_timezone = tweet['user']['time_zone']
 
+        self.media_type = []
+        self.media_url = []
+        for media in tweet['entities']['media']:
+            self.media_type.append(media['type'])
+            self.media_url.append(media['media_url'])
 
-        #### MANCA ####
-        # user followers e following e time zone
-        # media e url del tweet
-
-
+        self.url_links = []
+        for url in tweet['entities']['urls']:
+            self.url_link.append(url['display_url'])
 
         if tweet['coordinates'] is not None:
             self.loc_name = ''
@@ -426,9 +438,50 @@ class EloiLink(object):
     Class to represent links (retweets, mentions, replies, quotes) between nodes (users) in the network.
     """
     def __init__(self,node1,node2,link_type='generic'):
-        self.start = node1
-        self.end = node2
+        self.id_A = node1
+        self.id_B = node2
         self.type = link_type
+        self.node_A = None
+        self.node_B = None
+        return
+
+    def add_node_objects(self,node1,node2):
+        """
+        Creates two attributes with EloiNode type starting and ending nodes.
+        """
+        if type(node1) or type(node2) is not EloiNode:
+            raise ValueError('not an EloiNode object')
+
+        self.node_A = node1
+        self.node_B = node2
+
+        return
+
+
+class EloiLinkSum(object):
+    """
+    Class to represent the sum of the links between two nodes.
+    link_list is a list of EloiLink objects that connect two nodes.
+    """
+    def __init__(self, link_list):
+        node1 = link_test[0].node_A
+        node2 = link_test[0].node_B
+        num1 = len([nod for nod in link_list if nod.node_A == node1])
+        num2 = len([nod for nod in link_list if nod.node_A == node2])
+        if num1 >= num2:
+            self.node_A = node1
+            self.node_B = node2
+            self.total_AB = num1
+            self.total_BA = num2
+        else:
+            self.node_A = node2
+            self.node_B = node1
+            self.total_AB = num2
+            self.total_BA = num1
+
+        self.total = len(link_list)
+        self.links = link_list
+
         return
 
 
@@ -490,24 +543,17 @@ def read_json(filename, tweet_format = 'twitter'):
     # We use the file saved from last step as example
     tweets_file = open(filename, "r")
     Tweets = []
-    print('ciao!!')
 
     for line in tweets_file:
         try:
             # Read in one line of the file, convert it into a json object
             tweet = json.loads(line.strip())
-            print(type(tweet),tweet.keys())
+
             if 'text' in tweet: # only messages contains 'text' field is a tweet
                 if tweet_format == 'twitter':
-                    print(tweet['id_str'])
                     Tweets.append(tweet)
                 elif tweet_format == 'eloi':
-                    print('Entro')
-                    print(tweet['id_str'])
                     zio = EloiTweet(tweet)
-                    print(type(zio))
-                    print(tweet['user'])
-                    print(zio.user)
                     Tweets.append(zio)
                 else:
                     raise ValueError('tweet_formats available: {}, {}'.format('twitter','eloi'))
