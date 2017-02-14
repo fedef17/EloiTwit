@@ -303,6 +303,18 @@ def check_remaining_search(user = None, access_file = None):
     return restano
 
 
+######### Classes!! #######################
+
+
+class EloiNetwork(object):
+    """
+    Network object. Contains Nodes and Links. Contains subnets, which are same type objects.
+    """
+    def __init__(self, nodes, links):
+        pass
+
+
+
 class EloiTweet(object):
     """
     Simplified tweet object.
@@ -329,30 +341,42 @@ class EloiTweet(object):
 
         self.media_type = []
         self.media_url = []
-        for media in tweet['entities']['media']:
-            self.media_type.append(media['type'])
-            self.media_url.append(media['media_url'])
+        try:
+            for media in tweet['entities']['media']:
+                self.media_type.append(media['type'])
+                self.media_url.append(media['media_url'])
+        except Exception as cazzillo:
+            pass
+            #print('Found exception: {} -> {}'.format(type(cazzillo),cazzillo))
 
         self.url_links = []
-        for url in tweet['entities']['urls']:
-            self.url_link.append(url['display_url'])
+        try:
+            for url in tweet['entities']['urls']:
+                self.url_links.append(url['display_url'])
+        except Exception as cazzillo:
+            pass
+            #print('Found exception: {} -> {}'.format(type(cazzillo),cazzillo))
 
         if tweet['coordinates'] is not None:
             self.loc_name = ''
+            print('coords',tweet['coordinates'])
             lat, lon = extract_json_coords(tweet['coordinates'])
             self.loc_coordinates = [lat,lon]
             self.loc_type = 'Tweet_GEO_ref'
         elif tweet['place'] is not None:
+            print('place',tweet['place'])
             self.loc_name = tweet['place']['full_name']
-            lat, lon = extract_json_coords(tweet['place']['bounding_box']['coordinates'])
+            lat, lon = extract_json_coords(tweet['place']['bounding_box'])
             self.loc_coordinates = [lat,lon]
             self.loc_type = 'Tweet_GEO_tag'
-        elif tweet['user']['location'] is not None:
+        elif tweet['user']['location'] != '':
+            print('userloc',tweet['user']['location'])
             self.loc_name = tweet['user']['location']
             lat, lon = find_coords_of_place(tweet['user']['location'])
             self.loc_coordinates = [lat, lon]
             self.loc_type = 'User_location'
         else:
+            print('NO COORDS')
             self.loc_coordinates = [np.nan, np.nan]
             self.loc_name = ''
             self.loc_type = None
@@ -394,8 +418,11 @@ class EloiTweet(object):
             self.quoted_user_id = None
 
         hashtags = []
-        for hashtag in tweet['entities']['hashtags']:
-        	hashtags.append(hashtag['text'])
+        try:
+            for hashtag in tweet['entities']['hashtags']:
+        	       hashtags.append(hashtag['text'])
+        except Exception as cazzillo:
+            print('Found exception: {}'.format(cazzillo))
         self.hashtags = hashtags
 
         mention_ids = []
@@ -523,6 +550,7 @@ def extract_json_coords(coordinates):
     Extracts coordinates in json format and returns (lat,lon) of a point.
     ACHTUNG!! This reverts the order of (lat,lon) from JSON's (lon,lat).
     """
+
     if coordinates['type'] == 'Point':
         lat = coordinates['coordinates'][1]
         lon = coordinates['coordinates'][0]
@@ -558,7 +586,7 @@ def read_json(filename, tweet_format = 'twitter'):
                 else:
                     raise ValueError('tweet_formats available: {}, {}'.format('twitter','eloi'))
         except Exception as ciccio:
-            print('An error occurred: {}. Just skipping..'.format(type(ciccio)))
+            print('An error occurred: {}. Just skipping..'.format(ciccio))
             raise
             # read in a line is not in JSON format (sometimes errors occur)
             continue
