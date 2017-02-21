@@ -210,7 +210,8 @@ def internet_on(host="8.8.8.8", port=53, timeout=3):
         socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect((host, port))
         return True
     except Exception as ex:
-        print ex.message
+        print(ex.message)
+        print("I don't know whether port 53 is valid for everywhere in the world.. If this problem appears again, try commenting out the lines that involve this routine, which is simply a check of the internet connection.")
         return False
 
 

@@ -51,6 +51,9 @@ if inputs['folder_path'] == '.':
     print('Setting the current folder as output folder')
 cart = inputs['folder_path']
 
+if not os.path.exists(cart):
+    os.mkdir(cart)
+
 if inputs['access_file'] is None:
     access_file = cart+'access_file.acc'
 else:

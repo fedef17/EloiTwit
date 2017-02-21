@@ -101,7 +101,7 @@ twitter_stream = tw.TwitterStream(auth=oauth)
 # Get a sample of the public data following through Twitter
 iterator = twitter_stream.statuses.filter(track = search_string)
 
-n_file = 0
+n_file = i_0
 tweet_count = 0
 missing_tweets = 0
 NoMoreTweets = False
