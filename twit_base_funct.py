@@ -311,8 +311,81 @@ class EloiNetwork(object):
     """
     Network object. Contains Nodes and Links. Contains subnets, which are same type objects.
     """
-    def __init__(self, nodes, links):
+    def __init__(self, name, nodes = None, links = None, linksums = None, tweets = None):
+        self.nodes = nodes
+        self.edges = linksums
+        self.all_links = links
+        self.name = name
+        self.tweets = tweets
+        return
+
+    def create_from_cart(self, cart):
+        """
+        Reads all tweets in cart and builds the EloiNetwork object.
+        """
+        tweets = load_stream(cart, tag = None)
+        self.create_from_tweets_list(tweets)
+        return
+
+    def create_from_tweets_list(self, tweets):
+        """
+        Produces an EloiNetwork object with nodes and edges directly from the list of tweets.
+        """
+
+        self.tweets = tweets
+        print(len(tweets))
+
+        tweet_user_ids = np.array([twe.user_id for twe in tweets])
+        node_ids = np.unique(tweet_user_ids)
+        print(len(node_ids))
+
+        nodes = []
+        for nid in node_ids:
+            tweets_lui = [twe for twe in tweets if twe.user_id == nid]
+            nodo = EloiNode(tweets = tweets_lui)
+            nodes.append(nodo)
+
+        links = []
+        for twe in tweets:
+            links += [lin for lin in twe.link_to]
+
+        edges = []
+        for nodo in nodes:
+            link_to_nodo = [lin for lin in links if lin.id_B == nodo.id]
+            nodo.complete_interactions(link_to_nodo)
+            nodo.sum_links()
+            edges += nodo.sum_point_to
+
+        self.nodes = nodes
+        self.edges = edges
+        self.all_links = links
+
+        return
+
+
+    def geo_map(self):
         pass
+
+    def network_map(self):
+        pass
+
+    def show_node_list(self):
+        pass
+
+    def show_edges_list(self):
+        pass
+
+    def export_node_csv(self, filename = None):
+        if filename is None:
+            filename = self.name + '_nodes.csv'
+        export_node_csv(self, filename)
+        return
+
+    def export_edges_csv(self, filename = None):
+        if filename is None:
+            filename = self.name + '_edges.csv'
+        export_edges_csv(self, filename)
+        return
 
 
 
@@ -323,10 +396,10 @@ class EloiTweet(object):
 
     def __init__(self, tweet, internal_id = 0):
         self.int_id = internal_id
-        self.tweet_id = tweet['id']
+        self.id = tweet['id']
         self.user_name = tweet['user']['screen_name']
         self.user_id = tweet['user']['id']
-        self.time = tweet['created_at']
+        self.created_at = tweet['created_at']
         self.text = tweet['text']
         self.retweet_count = tweet['retweet_count']
         self.favorite_count = tweet['favorite_count']
@@ -339,6 +412,7 @@ class EloiTweet(object):
         self.user_location = tweet['user']['location']
         self.user_tw_count = tweet['user']['statuses_count']
         self.user_timezone = tweet['user']['time_zone']
+        self.lang = tweet['lang']
 
         self.media_type = []
         self.media_url = []
@@ -346,6 +420,7 @@ class EloiTweet(object):
             for media in tweet['entities']['media']:
                 self.media_type.append(media['type'])
                 self.media_url.append(media['media_url'])
+                raise EnvironmentError('MANCANO LE TAGS!! devi estrarle')
         except Exception as cazzillo:
             pass
             #print('Found exception: {} -> {}'.format(type(cazzillo),cazzillo))
@@ -360,34 +435,36 @@ class EloiTweet(object):
 
         if tweet['coordinates'] is not None:
             self.loc_name = ''
-            print('coords',tweet['coordinates'])
+            #print('coords',tweet['coordinates'])
             lat, lon = extract_json_coords(tweet['coordinates'])
             self.loc_coordinates = [lat,lon]
             self.loc_type = 'Tweet_GEO_ref'
         elif tweet['place'] is not None:
-            print('place',tweet['place'])
+            #print('place',tweet['place'])
             self.loc_name = tweet['place']['full_name']
             lat, lon = extract_json_coords(tweet['place']['bounding_box'])
             self.loc_coordinates = [lat,lon]
             self.loc_type = 'Tweet_GEO_tag'
         elif tweet['user']['location'] != '':
-            print('userloc',tweet['user']['location'])
+            #print('userloc',tweet['user']['location'])
             self.loc_name = tweet['user']['location']
             lat, lon = find_coords_of_place(tweet['user']['location'])
             self.loc_coordinates = [lat, lon]
             self.loc_type = 'User_location'
         else:
-            print('NO COORDS')
+            #print('NO COORDS')
             self.loc_coordinates = [np.nan, np.nan]
             self.loc_name = ''
             self.loc_type = None
 
+        self.type = 'Tweet'
 
         try:
             self.reply_to_user = tweet['in_reply_to_screen_name']
             self.reply_to_user_id = tweet['in_reply_to_user_id']
             self.reply_to_tweet_id = tweet['in_reply_to_status_id']
             self.flag_reply = True
+            self.type = 'Reply'
         except:
             self.reply_to_user = None
             self.reply_to_user_id = None
@@ -400,6 +477,7 @@ class EloiTweet(object):
             self.retweeted_user_id = rt['user']['id']
             self.retweeted_tweet_id = rt['id']
             self.flag_retweet = True
+            self.type = 'Retweet'
         except:
             self.flag_retweet = False
             self.retweeted_user = None
@@ -412,6 +490,7 @@ class EloiTweet(object):
             self.quoted_user_id = qt['user']['id']
             self.quoted_tweet_id = tweet['quoted_status_id_str']
             self.flag_quote = True
+            self.type = 'Quote'
         except:
             self.flag_quote = False
             self.quoted_tweet_id = None
@@ -436,18 +515,18 @@ class EloiTweet(object):
 
         self.link_to = []
         for muser, mid in zip(mention_users, mention_ids):
-            if self.flag_reply and mention == self.reply_to_user:
-                linko = EloiLink(self.user_id,mid,link_type='reply')
+            if self.flag_reply and muser == self.reply_to_user:
+                linko = EloiLink(self.user_id,mid,self.user_name,muser,self.id,self.created_at,link_type='Reply')
             else:
-                linko = EloiLink(self.user_id,mid,link_type='mention')
+                linko = EloiLink(self.user_id,mid,self.user_name,muser,self.id,self.created_at,link_type='Mention')
             self.link_to.append(linko)
 
         if self.flag_quote:
-            linko = EloiLink(self.user_id,self.quoted_user_id,link_type='quote')
+            linko = EloiLink(self.user_id,self.quoted_user_id,self.user_name,self.quoted_user,self.id,self.created_at,link_type='Quote')
             self.link_to.append(linko)
 
         if self.flag_retweet:
-            linko = EloiLink(self.user_id,self.retweeted_user_id,link_type='retweet')
+            linko = EloiLink(self.user_id,self.retweeted_user_id,self.user_name,self.retweeted_user,self.id,self.created_at,link_type='Retweet')
             self.link_to.append(linko)
 
         return
@@ -457,18 +536,22 @@ class EloiTweet(object):
         return
 
     def print_tw(self):
-        print('{}: {} at {} --> {}\n'.format(self.int_id, r'@'+self.user, self.time, self.text.encode('utf-8')))
+        print('{}: {} at {} --> {}\n'.format(self.id, r'@'+self.user, self.created_at, self.text.encode('utf-8')))
         return
 
 
 class EloiLink(object):
     """
-    Class to represent links (retweets, mentions, replies, quotes) between nodes (users) in the network.
+    Class to represent links (retweets, mentions, replies, quotes) between nodes (users) in the network. Uniquely linked to a tweet.
     """
-    def __init__(self,node1,node2,link_type='generic'):
+    def __init__(self,node1,node2,node1_name,node2_name,tweet_id,created_at,link_type=None):
         self.id_A = node1
         self.id_B = node2
+        self.name_A = node1_name
+        self.name_B = node2_name
         self.type = link_type
+        self.tweet_id = tweet_id
+        self.created_at = created_at
         self.node_A = None
         self.node_B = None
         return
@@ -488,50 +571,141 @@ class EloiLink(object):
 
 class EloiLinkSum(object):
     """
-    Class to represent the sum of the links between two nodes.
+    Class to represent the sum of the links between two nodes, with a determined direction. So, this is a vector: intensity (weight), direction (AB) and verse (A to B) are specified.
     link_list is a list of EloiLink objects that connect two nodes.
     """
-    def __init__(self, link_list):
-        node1 = link_test[0].node_A
-        node2 = link_test[0].node_B
-        num1 = len([nod for nod in link_list if nod.node_A == node1])
-        num2 = len([nod for nod in link_list if nod.node_A == node2])
-        if num1 >= num2:
-            self.node_A = node1
-            self.node_B = node2
-            self.total_AB = num1
-            self.total_BA = num2
-        else:
-            self.node_A = node2
-            self.node_B = node1
-            self.total_AB = num2
-            self.total_BA = num1
+    def __init__(self, link_list, node_id_A):
+        self.id_A = node_id_A
+        self.id_B = link_list[0].id_B
+        self.name_A = link_list[0].name_A
+        self.name_B = link_list[0].name_B
+        if self.id_B == self.id_A:
+            self.id_B = link_list[0].id_A
+            self.name_A = link_list[0].name_B
+            self.name_B = link_list[0].name_A
 
-        self.total = len(link_list)
-        self.links = link_list
+        num1 = len([link for link in link_list if link.id_A == node_id_A])
+
+        self.weight = num1
+        self.links = [link for link in link_list if link.id_A == node_id_A]
+        self.timeset = [link.created_at for link in link_list if link.id_A == node_id_A]
 
         return
 
 
 class EloiNode(object):
     """
-    Class to represent nodes (users) in the network.
+    Class to represent nodes (users) in the network. Name is the username. tweets is the list of tweets (EloiTweet objects) made by the user.
     """
-    def __init__(self, name = 'puppa!', user_id = None, tweets_id = [], links = []):
-        self.name = name
-        self.id = user_id
-        self.tweets_id = tweets_id
-        self.linked_to = linked_to
-        self.tweets = 0
-        self.mentions = 0
-        self.retweeted = 0
+    def __init__(self, name = None, user_id = None, tweets = []):
+
+        if len(tweets) == 0:
+            self.name = name
+            self.id = user_id
+            return
+
+        self.name = tweets[0].user
+        self.id = tweets[0].user_id
+        self.tweets = tweets
+        self.tweets_id = [twe.id for twe in tweets]
+
+        self.descr = tweets[0].user_descr
+        self.followers = tweets[0].user_followers
+        self.following = tweets[0].user_following
+        self.geo_enabled = tweets[0].user_geo_enabled
+        self.user_location = tweets[0].user_location
+        self.lang = tweets[0].lang
+
+        loc_types = [twe.loc_type for twe in tweets]
+        if 'Tweet_GEO_ref' in loc_types:
+            ind = loc_types.index('Tweet_GEO_ref')
+            self.best_coordinates = tweets[ind].loc_coordinates
+            self.best_loc_type = 'Tweet_GEO_ref'
+        elif 'Tweet_GEO_tag' in loc_types:
+            ind = loc_types.index('Tweet_GEO_tag')
+            self.best_coordinates = tweets[ind].loc_coordinates
+            self.best_loc_type = 'Tweet_GEO_tag'
+        else:
+            try:
+                self.best_coordinates = find_coords_of_place(self.user_location)
+                self.best_loc_type = 'User_location'
+            except:
+                self.best_coordinates = (np.nan,np.nan)
+                self.best_loc_type = None
+
+        self.tweet_count = tweets[0].user_tw_count
+        self.timezone = tweets[0].user_timezone
+
+        self.points_to = []
+        for twe in tweets:
+            self.points_to += twe.link_to
+        self.pointed_by = []
+        self.num_tweets = len(tweets)
+        self.active_interactions = len(self.points_to)
+        self.passive_interactions = len(self.pointed_by)
+        self.mentions = len([lin for lin in self.pointed_by if lin.type == 'Mention'])
+        self.retweeted = len([lin for lin in self.pointed_by if lin.type == 'Retweet'])
+
         return
 
-    def extract_from_tweet(self, tweet):
-        self.name = tweet.user
-        self.id_str = tweet.user_id
-        self.tweets_id.append(tweet.tweet_id)
-        self.linked_to = self.linked_to + tweet.link_to
+    # def extract_from_tweet(self, tweet):
+    #     self.name = tweet.user
+    #     self.id = tweet.user_id
+    #     self.tweets_id.append(tweet.tweet_id)
+    #     self.num_tweets += 1
+    #     self.points_to = self.points_to + tweet.link_to
+    #     self.active_interactions = len(self.points_to)
+    #     return
+
+    def add_tweet_to_user(self, tweet):
+        #Check if it's already there
+        if tweet.id in self.tweets_id:
+            print('Tweet already considered, skipping..\n')
+            return
+        self.tweets_id.append(tweet.id)
+        self.points_to = self.points_to + tweet.link_to
+        self.num_tweets += 1
+        self.active_interactions = len(self.points_to)
+        return
+
+    def complete_interactions(self, link_list):
+        """
+        link_list is a list of EloiLink objects in which Node is the node_B of the connection, the receiver of the interaction. Tipically link_list comes from the EloiNetwork object.
+        """
+        self.passive_interactions = len(link_list)
+        self.pointed_by = link_list
+        self.mentions = len([lin for lin in self.pointed_by if lin.type == 'Mention'])
+        self.retweeted = len([lin for lin in self.pointed_by if lin.type == 'Retweet'])
+
+        return
+
+    def sum_links(self):
+        """
+        Adds two attributes that represent the incoming and outgoing relations, summing on all single links. (EloiLinkSum objects)
+        """
+
+        point_to = [link for link in self.points_to]
+        point_to_user = [link.id_B for link in self.points_to]
+        try:
+            pointed_by = [link for link in self.pointed_by]
+            pointed_by_user = [link.id_A for link in self.pointed_by]
+        except Exception as cazzillo:
+            print(cazzillo)
+            PrintEmph('Have you run the EloiNode.complete_interactions() method first??')
+            raise cazzillo
+
+        self.sum_point_to = []
+        for user in point_to_user:
+            links_to_user = [link for link in point_to if link.id_B == user]
+            link_sums = EloiLinkSum(links_to_user, self.id)
+            self.sum_point_to.append(link_sums)
+
+        self.sum_pointed_by = []
+        for user in pointed_by_user:
+            links_to_user = [link for link in pointed_by if link.id_A == user]
+            link_sums = EloiLinkSum(links_to_user, user)
+            self.sum_pointed_by.append(link_sums)
+
         return
 
 
@@ -564,10 +738,10 @@ def extract_json_coords(coordinates):
     return lat, lon
 
 
-def read_json(filename, tweet_format = 'twitter'):
+def read_json(filename, tweet_format = 'eloi'):
     """
     Reads json formatted file. Returns list of tweets in format of python dicts.
-    :param tweet_format: if 'twitter' the output is a list of twitter.api.TwitterDictResponse, if 'eloi' my class is used
+    :param tweet_format: if 'twitter' the output is a list of twitter.api.TwitterDictResponse, if 'eloi' the class EloiTweet is used.
     """
     # We use the file saved from last step as example
     tweets_file = open(filename, "r")
@@ -588,8 +762,136 @@ def read_json(filename, tweet_format = 'twitter'):
                     raise ValueError('tweet_formats available: {}, {}'.format('twitter','eloi'))
         except Exception as ciccio:
             print('An error occurred: {}. Just skipping..'.format(ciccio))
-            raise
+            #raise
             # read in a line is not in JSON format (sometimes errors occur)
             continue
 
     return Tweets
+
+
+def load_stream(folder, tag = None, tweet_format = 'eloi'):
+    """
+    Loads the tweets contained in folder. If tag is specified, only filenames containing tag are considered. Returns list of Tweet objects.
+    """
+    lista_filez = os.listdir(folder)
+
+    tweets = []
+
+    if tag is not None:
+        lista = [fil for fil in lista_filez if tag in fil]
+    else:
+        lista = lista_filez
+
+    for fil in lista:
+        tweets_fil = read_json(folder+fil, tweet_format = tweet_format)
+        tweets += tweets_fil
+
+    return tweets
+
+
+def export_csv(filename, key_names, node_list, delimiter = '\t'):
+    """
+    Export csv file to be imported in gephi.
+    """
+
+    import csv
+    #tbf.export_csv(links_A, links_B)
+    filos = open(filename, 'w')
+    filecsv = csv.writer(filos,delimiter='\t')
+    # Writing the keys
+    filecsv.writerow(key_names)
+
+    for node in node_list:
+        filecsv.writerow(node)
+
+    filos.close()
+    return
+
+
+def export_nodedge_csv(network, cart = None, filelabel = None, export_edges = True, export_nodes = True, export_tweets = True, sum_links = True):
+    """
+    Exports node csv for all tweets downloaded in folder cart.
+    :param network: EloiNetwork object
+    :param cart: folder_path
+    :param filelabel:
+    """
+    if cart is None:
+        cart = './'
+
+    if filelabel is None:
+        filelabel =  network.name
+
+    if export_edges and sum_links:
+        cose = network.edges
+        coze = []
+        for cos,num in zip(cose,range(len(cose))):
+            coze.append([cos.id_A,cos.id_B,'Directed',num,cos.name_A+' -> '+cos.name_B,cos.timeset,cos.weight])
+        nomi = "source target type id label timeset weight"
+        nomis = nomi.split()
+        encode_utf8(coze)
+        export_csv(cart+filelabel+'_edges.csv', nomis, coze)
+    elif export_edges and not sum_links:
+        cose = network.all_links
+        coze = []
+        for cos,num in zip(cose,range(len(cose))):
+            coze.append([cos.id_A,cos.id_B,'Directed',num,cos.name_A+' -> '+cos.name_B,cos.created_at,1.0])
+        nomi = "source target type id label timestamp weight"
+        nomis = nomi.split()
+        encode_utf8(coze)
+        export_csv(cart+filelabel+'_edges.csv', nomis, coze)
+
+    if export_nodes:
+        nomi = "id label timestamp lat lng lang friends_count followers_count"
+        cose = network.nodes
+        coze = []
+        for cos,num in zip(cose,range(len(cose))):
+            tweet_id = [twe.id for twe in cos.tweets]
+            id_min = np.argmin(np.array(tweet_id))
+            timestamp = [twe for twe in cos.tweets][id_min].created_at
+            coze.append([cos.id,cos.name,timestamp,cos.best_coordinates[0],cos.best_coordinates[1],cos.lang,cos.following,cos.followers])
+        encode_utf8(coze)
+        nomis = nomi.split()
+        export_csv(cart+filelabel+'_nodes.csv', nomis, coze)
+
+    if export_tweets:
+        nomi = "id label user timestamp lat lng lang"
+        cose = network.tweets
+        coze = []
+        for cos,num in zip(cose,range(len(cose))):
+            coze.append([cos.id,cos.text,cos.user_id,cos.user_name,cos.created_at,cos.loc_coordinates[0],cos.loc_coordinates[1],cos.lang])
+        nomis = nomi.split()
+        encode_utf8(coze)
+        export_csv(cart+filelabel+'_tweets.csv', nomis, coze)
+
+    return
+
+
+def encode_utf8(lista):
+    """
+    Encodes in utf-8 all string elements of list.
+    """
+    lista_ok = []
+    for cos in lista:
+        if type(cos) == str:
+            cos.encode('utf-8')
+        lista_ok.append(cos)
+
+    lista = lista_ok
+
+    return
+
+
+def encode_ascii(lista):
+    """
+    Encodes in ascii all string elements of list. ignores non ascii characters.
+    """
+
+    lista_ok = []
+    for cos in lista:
+        if type(cos) == str:
+            cos.encode('ascii','ignore')
+        lista_ok.append(cos)
+
+    lista = lista_ok
+
+    return
