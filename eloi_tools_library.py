@@ -255,7 +255,7 @@ def export_csv_search(cart, tag = None):
             tag = cart[ii+1:-1]
 
         nodes = np.unique(np.array([twe.user_name for twe in tweets]))
-        links_A = [lin.name_A for lin in twe.link_to]
+        #links_A = [lin.name_A for lin in twe.link_to]
 
         links_A = []
         links_B = []
