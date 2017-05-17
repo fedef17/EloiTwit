@@ -83,10 +83,10 @@ for ht in ht_list:
 
     # Run search
         #### READS INPUTS from input_file ################
-    keys = 'access_file folder_path search_string search_label max_files first_file max_id'
+    keys = 'access_file folder_path search_string search_label first_file max_id'
     keys = keys.split()
-    itype = [str, str, str, str, int, int, long]
-    defaults = [None, None, None, None, 1000, 0, None]
+    itype = [str, str, str, str, int, long]
+    defaults = [None, None, None, None, 0, None]
 
     accfile = access_files[0]
 
