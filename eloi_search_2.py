@@ -64,3 +64,8 @@ for ilk in range(max_try):
         continue
 
 print('Results saved in: {}. Stopping program.. ciao!'.format(_cart_))
+
+ok, cazzillo = etl.export_csv_search(_cart_)
+if not ok:
+    print('Problem in exporting csv..\n')
+    raise cazzillo

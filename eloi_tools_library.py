@@ -17,6 +17,7 @@ import json
 import urllib
 import urllib2
 import argparse
+import csv
 
 # ALL MAIN PROGRAMS ARE AVAILABLE HERE AS Functions
 
@@ -239,3 +240,42 @@ def search(inputs):
         print(cazzillo)
         status = False
         return cart, times, max_id, status
+
+
+def export_csv_search(cart, tag = None):
+    """
+    Reads the tweets and exports a csv to be read in gephi.
+    """
+    # Reads all the tweets in folder
+    try:
+        tweets = tbf.load_stream(cart, tag = tag)
+
+        if tag is None:
+            ii = cart.index('/#')
+            tag = cart[ii+1:-1]
+
+        nodes = np.unique(np.array([twe.user_name for twe in tweets]))
+        links_A = [lin.name_A for lin in twe.link_to]
+
+        links_A = []
+        links_B = []
+        for twe in tweets:
+            links_A += [lin.name_A for lin in twe.link_to]
+            links_B += [lin.name_B for lin in twe.link_to]
+
+        #tbf.export_csv(links_A, links_B)
+        fileo = open(cart + tag + '_links.csv', 'w')
+        filecsv = csv.writer(fileo,delimiter='\t')
+
+        for A, B in zip(links_A, links_B):
+            filecsv.writerow([A,B])
+
+        fileo.close()
+        status = True
+        cazzillo = None
+
+    except Exception as cazzillo:
+        print(cazzillo)
+        status = False
+
+    return status, cazzillo
